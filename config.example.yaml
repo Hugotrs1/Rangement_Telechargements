@@ -1,0 +1,70 @@
+# Copie ce fichier en config.yaml et adapte-le.
+# Les règles sont testées dans l'ordre : la première qui correspond gagne.
+# Dans « match », tous les critères donnés doivent correspondre ;
+# dans une liste (extensions, name), un seul élément suffit.
+# Variables utilisables dans « to » : {year} {month} {day} {ext}
+# (date de dernière modification du fichier).
+
+source: ~/Downloads          # dossier à surveiller
+destination: ~/Downloads     # racine des chemins « to » (relatifs)
+
+settle_seconds: 5            # attendre que le fichier ne bouge plus avant de le ranger
+duplicates: trash            # trash = un doublon exact part à la corbeille | keep = renommé « (1) »
+fallback: null               # ex : "Divers" pour ranger aussi les fichiers sans règle
+
+ignore:                      # en plus des fichiers temporaires de navigateur
+  - "*.torrent"
+
+rules:
+  - name: Factures et papiers
+    match:
+      name: ["*facture*", "*invoice*", "*quittance*", "*bulletin*paie*", "*avis*impo*", "*relev*"]
+      extensions: [pdf]
+    to: Admin/{year}
+
+  - name: Captures d'écran
+    match:
+      name: ["screenshot*", "capture d*cran*", "capture*"]
+      extensions: [png, jpg, jpeg]
+    to: Images/Captures/{year}-{month}
+
+  - name: Images
+    match: { extensions: [jpg, jpeg, png, gif, webp, heic, bmp, svg, avif] }
+    to: Images
+
+  - name: Vidéos
+    match: { extensions: [mp4, mkv, mov, avi, webm] }
+    to: Vidéos
+
+  - name: Musique
+    match: { extensions: [mp3, flac, wav, ogg, m4a] }
+    to: Musique
+
+  - name: PDF
+    match: { extensions: [pdf] }
+    to: Documents/PDF
+
+  - name: Documents
+    match: { extensions: [doc, docx, odt, rtf, txt, md, xls, xlsx, ods, csv, ppt, pptx, odp] }
+    to: Documents
+
+  - name: Archives
+    match: { extensions: [zip, rar, 7z, tar, gz, bz2, xz] }
+    to: Archives
+
+  - name: Installateurs
+    match: { extensions: [exe, msi, msix, appx, dmg, apk, iso] }
+    to: Installateurs
+
+  - name: Code
+    match: { extensions: [py, js, ts, json, yaml, yml, html, css, sql, sh, ps1, ipynb, java, c, cpp] }
+    to: Code
+
+  - name: Polices
+    match: { extensions: [ttf, otf, woff, woff2] }
+    to: Polices
+
+# Corbeille automatique des vieux fichiers (récupérables dans la corbeille Windows)
+cleanup:
+  - folder: Installateurs
+    older_than_days: 30
