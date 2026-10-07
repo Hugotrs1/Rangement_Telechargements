@@ -1,16 +1,18 @@
-# Copie ce fichier en config.yaml et adapte-le à ton goût.
-#
+# Copie ce fichier en config.yaml et adapte-le.
 # Les règles sont testées dans l'ordre : la première qui correspond gagne.
-# - extensions : le fichier doit avoir une de ces extensions (en minuscules)
-# - name       : le nom doit ressembler à un de ces motifs (* = n'importe quoi)
-# - to         : dossier de destination ({year} et {month} = date du fichier)
+# Dans « match », tous les critères donnés doivent correspondre ;
+# dans une liste (extensions, name), un seul élément suffit.
+# Variables utilisables dans « to » : {year} {month} {day} {ext}
+# (date de dernière modification du fichier).
 
-source: ~/Downloads          # dossier à ranger
-destination: ~/Downloads     # où créer les dossiers de rangement
+source: ~/Downloads          # dossier à surveiller
+destination: ~/Downloads     # racine des chemins « to » (relatifs)
 
-fallback: null               # mets "Divers" pour ranger aussi les fichiers sans règle
+settle_seconds: 5            # attendre que le fichier ne bouge plus avant de le ranger
+duplicates: trash            # trash = un doublon exact part à la corbeille | keep = renommé « (1) »
+fallback: null               # ex : "Divers" pour ranger aussi les fichiers sans règle
 
-ignore:                      # fichiers à ne jamais déplacer
+ignore:                      # en plus des fichiers temporaires de navigateur
   - "*.torrent"
 
 rules:
@@ -22,9 +24,18 @@ rules:
 
   - name: Captures d'écran
     match:
-      name: ["screenshot*", "capture*"]
+      name: ["screenshot*", "capture d*cran*", "capture*"]
       extensions: [png, jpg, jpeg]
     to: Images/Captures/{year}-{month}
+
+  # Exemple de critères avancés (enlève les « # » pour l'activer) :
+  # regex = expression régulière sur le nom, min_size_mb = taille minimale en Mo
+  # - name: Gros enregistrements OBS
+  #   match:
+  #     regex: "^\\d{4}-\\d{2}-\\d{2} \\d{2}-\\d{2}"
+  #     extensions: [mkv, mp4]
+  #     min_size_mb: 500
+  #   to: Vidéos/OBS/{year}-{month}-{day}
 
   - name: Images
     match: { extensions: [jpg, jpeg, png, gif, webp, heic, bmp, svg, avif] }
@@ -47,18 +58,22 @@ rules:
     to: Documents
 
   - name: Archives
-    match: { extensions: [zip, rar, 7z, tar, gz] }
+    match: { extensions: [zip, rar, 7z, tar, gz, bz2, xz] }
     to: Archives
 
   - name: Installateurs
-    match: { extensions: [exe, msi, msix, iso, apk] }
+    match: { extensions: [exe, msi, msix, appx, dmg, apk, iso] }
     to: Installateurs
 
   - name: Code
-    match: { extensions: [py, js, ts, json, yaml, yml, html, css, sql, sh, ps1, ipynb] }
+    match: { extensions: [py, js, ts, json, yaml, yml, html, css, sql, sh, ps1, ipynb, java, c, cpp] }
     to: Code
 
-# Envoie à la corbeille les fichiers trop anciens de certains dossiers
+  - name: Polices
+    match: { extensions: [ttf, otf, woff, woff2] }
+    to: Polices
+
+# Corbeille automatique des vieux fichiers (récupérables dans la corbeille Windows)
 cleanup:
   - folder: Installateurs
     older_than_days: 30
