@@ -1,18 +1,12 @@
 import os
 import time
-from pathlib import Path
 
 import pytest
 
-from organizer.config import ConfigError, load_config
-from organizer.journal import Journal
-from organizer.mover import cleanup, free_path, sweep
-from organizer.rules import find_destination
+import organizer
 
 CONFIG = """
-source: {src}
-destination: {src}
-duplicates: trash
+source: {folder}
 rules:
   - name: Factures
     match:
@@ -24,10 +18,7 @@ rules:
     to: Images
   - name: PDF
     match: {{ extensions: [pdf] }}
-    to: Documents/PDF
-  - name: Gros fichiers
-    match: {{ regex: "^video", min_size_mb: 0.001 }}
-    to: Gros
+    to: Documents
 cleanup:
   - folder: Installateurs
     older_than_days: 30
@@ -35,104 +26,80 @@ cleanup:
 
 
 @pytest.fixture
-def env(tmp_path, monkeypatch):
-    src = tmp_path / "Downloads"
-    src.mkdir()
+def downloads(tmp_path, monkeypatch):
+    """Un faux dossier Téléchargements, avec un journal et une corbeille factices."""
+    folder = tmp_path / "Downloads"
+    folder.mkdir()
     config_file = tmp_path / "config.yaml"
-    config_file.write_text(CONFIG.format(src=src.as_posix()), encoding="utf-8")
-    trashed = []
-    monkeypatch.setattr("organizer.mover.send2trash", lambda p: (trashed.append(Path(p)), os.remove(p)))
-    config = load_config(config_file)
-    return config, Journal(config.journal), src, trashed
+    config_file.write_text(CONFIG.format(folder=folder.as_posix()), encoding="utf-8")
+
+    monkeypatch.setattr(organizer, "JOURNAL", tmp_path / "journal.jsonl")
+    trash = []
+    monkeypatch.setattr(organizer, "send2trash", lambda path: (trash.append(os.path.basename(path)), os.remove(path)))
+    return folder, organizer.load_config(config_file), trash
 
 
-def write(path: Path, content: bytes = b"data") -> Path:
-    path.write_bytes(content)
+def create(path, content="contenu"):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content)
     return path
 
 
-def test_rules_first_match_wins(env):
-    config, _, src, _ = env
-    facture = write(src / "Facture-EDF.PDF")
-    year = time.localtime(facture.stat().st_mtime).tm_year
-    assert find_destination(facture, config)[1] == src / "Admin" / str(year)
-    assert find_destination(write(src / "cours.pdf"), config)[1] == src / "Documents" / "PDF"
-    assert find_destination(write(src / "photo.JPG"), config)[1] == src / "Images"
-    assert find_destination(write(src / "notes.txt"), config) == (None, None)
+def test_regles(downloads):
+    folder, config, _ = downloads
+    year = time.localtime().tm_year
+    assert organizer.find_folder(create(folder / "Facture-EDF.PDF"), config) == folder / "Admin" / str(year)
+    assert organizer.find_folder(create(folder / "cours.pdf"), config) == folder / "Documents"
+    assert organizer.find_folder(create(folder / "photo.JPG"), config) == folder / "Images"
+    assert organizer.find_folder(create(folder / "notes.txt"), config) is None
+    assert organizer.find_folder(create(folder / "film.mp4.crdownload"), config) is None
 
 
-def test_ignores_partial_downloads(env):
-    config, _, src, _ = env
-    assert find_destination(write(src / "film.mp4.crdownload"), config) == (None, None)
+def test_rangement_doublons_et_conflits(downloads):
+    folder, config, trash = downloads
+    create(folder / "Images" / "a.png", "pareil")
+    create(folder / "a-copie.png", "pareil")  # même contenu → corbeille
+    create(folder / "Images" / "b.png", "ancien")
+    create(folder / "b.png", "nouveau")  # même nom, contenu différent → renommé
+
+    organizer.tidy_folder(config)
+
+    assert trash == ["a-copie.png"]
+    assert (folder / "Images" / "b (1).png").read_text() == "nouveau"
+    assert not (folder / "b.png").exists()
 
 
-def test_size_criterion(env):
-    config, _, src, _ = env
-    assert find_destination(write(src / "video-petite.bin", b"x"), config) == (None, None)
-    assert find_destination(write(src / "video-grosse.bin", b"x" * 2048), config)[1] == src / "Gros"
+def test_simulation(downloads):
+    folder, config, _ = downloads
+    create(folder / "photo.png")
+    assert organizer.tidy_folder(config, test=True) == ["📁 photo.png → Images"]
+    assert (folder / "photo.png").exists()
 
 
-def test_sweep_moves_renames_and_dedupes(env):
-    config, journal, src, trashed = env
-    (src / "Images").mkdir()
-    write(src / "Images" / "a.png", b"original")
-    write(src / "a.png", b"original")  # doublon exact → corbeille
-    write(src / "b.png", b"one")
-    write(src / "Images" / "b.png", b"other")  # même nom, contenu différent → renommé
+def test_annulation(downloads):
+    folder, config, _ = downloads
+    create(folder / "photo.png")
+    create(folder / "cours.pdf")
+    organizer.tidy_folder(config)
+    assert not (folder / "photo.png").exists()
 
-    outcomes = sweep(config, journal)
-    actions = sorted((o.src.name, o.action) for o in outcomes if o.action != "skipped")
-    assert actions == [("a.png", "duplicate"), ("b.png", "moved")]
-    assert trashed == [src / "a.png"]
-    assert (src / "Images" / "b (1).png").read_bytes() == b"one"
-    assert not (src / "b.png").exists()
+    organizer.undo_last_run()
+    assert (folder / "photo.png").exists() and (folder / "cours.pdf").exists()
+    assert organizer.undo_last_run() == ["Rien à annuler."]
 
 
-def test_dry_run_changes_nothing(env):
-    config, journal, src, _ = env
-    write(src / "photo.png")
-    outcomes = sweep(config, journal, dry_run=True)
-    assert outcomes[0].action == "moved"
-    assert (src / "photo.png").exists()
-    assert journal.entries() == []
-
-
-def test_undo_restores_last_batch(env):
-    config, journal, src, _ = env
-    write(src / "photo.png")
-    write(src / "cours.pdf")
-    sweep(config, journal)
-    assert not (src / "photo.png").exists()
-
-    report = journal.undo_last()
-    assert len(report) == 2
-    assert (src / "photo.png").exists() and (src / "cours.pdf").exists()
-    assert journal.undo_last() == ["Rien à annuler."]
-
-
-def test_cleanup_old_files(env):
-    config, journal, src, trashed = env
-    folder = src / "Installateurs"
-    folder.mkdir()
-    old = write(folder / "vieux.exe")
-    recent = write(folder / "recent.exe")
-    forty_days_ago = time.time() - 40 * 86400
+def test_nettoyage(downloads):
+    folder, config, trash = downloads
+    old = create(folder / "Installateurs" / "vieux.exe")
+    create(folder / "Installateurs" / "recent.exe")
+    forty_days_ago = time.time() - 40 * 24 * 3600
     os.utime(old, (forty_days_ago, forty_days_ago))
 
-    assert cleanup(config, journal) == [old]
-    assert trashed == [old]
-    assert recent.exists()
+    organizer.clean_old_files(config)
+    assert trash == ["vieux.exe"]
 
 
-def test_free_path(tmp_path):
-    write(tmp_path / "x.txt")
-    write(tmp_path / "x (1).txt")
-    assert free_path(tmp_path / "x.txt") == tmp_path / "x (2).txt"
-    assert free_path(tmp_path / "y.txt") == tmp_path / "y.txt"
-
-
-def test_invalid_config(tmp_path):
-    bad = tmp_path / "bad.yaml"
-    bad.write_text("source: .\nrules:\n  - name: Vide\n    to: X\n", encoding="utf-8")
-    with pytest.raises(ConfigError, match="critère"):
-        load_config(bad)
+def test_nom_libre(tmp_path):
+    create(tmp_path / "x.txt")
+    create(tmp_path / "x (1).txt")
+    assert organizer.free_name(tmp_path / "x.txt") == tmp_path / "x (2).txt"

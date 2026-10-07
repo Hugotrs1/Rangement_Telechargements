@@ -1,18 +1,16 @@
-# Copie ce fichier en config.yaml et adapte-le.
+# Copie ce fichier en config.yaml et adapte-le à ton goût.
+#
 # Les règles sont testées dans l'ordre : la première qui correspond gagne.
-# Dans « match », tous les critères donnés doivent correspondre ;
-# dans une liste (extensions, name), un seul élément suffit.
-# Variables utilisables dans « to » : {year} {month} {day} {ext}
-# (date de dernière modification du fichier).
+# - extensions : le fichier doit avoir une de ces extensions (en minuscules)
+# - name       : le nom doit ressembler à un de ces motifs (* = n'importe quoi)
+# - to         : dossier de destination ({year} et {month} = date du fichier)
 
-source: ~/Downloads          # dossier à surveiller
-destination: ~/Downloads     # racine des chemins « to » (relatifs)
+source: ~/Downloads          # dossier à ranger
+destination: ~/Downloads     # où créer les dossiers de rangement
 
-settle_seconds: 5            # attendre que le fichier ne bouge plus avant de le ranger
-duplicates: trash            # trash = un doublon exact part à la corbeille | keep = renommé « (1) »
-fallback: null               # ex : "Divers" pour ranger aussi les fichiers sans règle
+fallback: null               # mets "Divers" pour ranger aussi les fichiers sans règle
 
-ignore:                      # en plus des fichiers temporaires de navigateur
+ignore:                      # fichiers à ne jamais déplacer
   - "*.torrent"
 
 rules:
@@ -24,7 +22,7 @@ rules:
 
   - name: Captures d'écran
     match:
-      name: ["screenshot*", "capture d*cran*", "capture*"]
+      name: ["screenshot*", "capture*"]
       extensions: [png, jpg, jpeg]
     to: Images/Captures/{year}-{month}
 
@@ -49,22 +47,18 @@ rules:
     to: Documents
 
   - name: Archives
-    match: { extensions: [zip, rar, 7z, tar, gz, bz2, xz] }
+    match: { extensions: [zip, rar, 7z, tar, gz] }
     to: Archives
 
   - name: Installateurs
-    match: { extensions: [exe, msi, msix, appx, dmg, apk, iso] }
+    match: { extensions: [exe, msi, msix, iso, apk] }
     to: Installateurs
 
   - name: Code
-    match: { extensions: [py, js, ts, json, yaml, yml, html, css, sql, sh, ps1, ipynb, java, c, cpp] }
+    match: { extensions: [py, js, ts, json, yaml, yml, html, css, sql, sh, ps1, ipynb] }
     to: Code
 
-  - name: Polices
-    match: { extensions: [ttf, otf, woff, woff2] }
-    to: Polices
-
-# Corbeille automatique des vieux fichiers (récupérables dans la corbeille Windows)
+# Envoie à la corbeille les fichiers trop anciens de certains dossiers
 cleanup:
   - folder: Installateurs
     older_than_days: 30
